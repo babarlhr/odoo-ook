@@ -26,6 +26,8 @@ Ook will select the Odoo server with the following heuristic.
   - Otherwise it will use the previously used odoo install.
   - Otherwise it will try to find odoo in the usual install directories.
 
+<b></b>
+
     ook reset
 
 Relaunch the server with a fresh database
