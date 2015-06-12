@@ -38,6 +38,10 @@ Typing this command will automatically download the branch from
 the right Odoo git repository and create a temporary 
 server / database for this branch on a new port.
 
+All of this is done in a way such that your odoo repository is 
+not modified. (Useful when you want to try a new branch in the
+middle of your work)
+
     ook find stuff
 
 Find matching files in the odoo repository
