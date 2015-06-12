@@ -1,7 +1,7 @@
 from distutils.core import setup
 
 setup(
-        name             = "ook",
+        name             = "odoo-ook",
         version          = "1.0.0",
         author           = "Frederic van der Essen",
         author_email     = "fvdessen+x@gmail.com",
