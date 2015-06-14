@@ -517,18 +517,10 @@ def cmd_find(args):
         pattern = '"*' + "*".join(args[1:]) + '*"'
         args = args[1:]
         if len(args) == 1:
-            results = rexec('find ' + path + ' -iname ' + '*' + args[0] + '*')
+            pexec('find ' + path + ' -iname ' + '*' + args[0] + '*')
         else:
             pattern = '*' + "*".join(args) + '*'
-            results = rexec('find ' + path + ' -iwholename ' + pattern)
-
-        if not results:
-            return
-        elif len(results.split('\n')) < 20:
-            print results
-        else:
-            less(results)
-
+            pexec('find ' + path + ' -iwholename ' + pattern)
 
 def cmd_edit(args):
     if len (args) < 2:
