@@ -658,6 +658,7 @@ def cmd_set_alias(args):
 def cmd_main(args):
     if len(args) == 0:
         cmd_ook()
+        return
     else:
         args = cmd_alias(args)
 
