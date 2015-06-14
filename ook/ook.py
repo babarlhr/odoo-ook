@@ -111,6 +111,10 @@ CMD_HELP = {
 
        [args] will be passed to the odoo 
        server command line.
+
+       Ex: ook start -i stock
+       -> Start odoo and install the stock
+          module
     """,
     "reset": """
    reset [args]
@@ -179,6 +183,10 @@ CMD_HELP = {
 
        [args] will be passed to the odoo
        server command line at restart.
+
+       Ex: ook try 8.0-fixes-mat -i website
+       -> Create an instance for the 8.0-fixes-mat
+          branch and install the website module
     """,
     "path": """
    path 
@@ -191,6 +199,11 @@ CMD_HELP = {
        official repositories and create a new git
        branch with the same name with remote tracking
        activated 
+
+       Ex: ook fetch 8.0-false-osv-field-nle
+       -> You can checkout 8.0-false-osv-field-nle
+          afterwards
+
     """,
     "branch": """
    branch 
@@ -199,6 +212,8 @@ CMD_HELP = {
     "git": """
    git [git command]
        Executes the git command in the odoo repository. 
+       Ex: cd /var/log; ook git status
+       -> Prints git's status. 
     """,
     "config": """
    config [key] [value]
@@ -209,6 +224,24 @@ CMD_HELP = {
 
        [key] [value]
        Sets the Ook config option 'key' to 'value'
+    """,
+    "alias": """
+   alias ALIAS CMD:
+       Creates an alias named ALIAS for the ook command
+       CMD. CMD can contain arguments for the aliased
+       command. If further arguments are given when
+       invoking the alias, they are appended to the 
+       alias.
+
+       Ex: ook alias f find
+       ->  ook f web/ .js
+
+       If the alias contains the token ARGS, it will
+       be replaced by the invocation arguments.
+
+       Ex: ook alias css edit ARGS .css
+       ->  ook css website/
+           ˆ- Expands to "ook edit website/ .css"
     """,
 }
 
@@ -487,7 +520,7 @@ def cmd_find(args):
         elif len(results.split('\n')) < 20:
             print results
         else:
-            less(resuts)
+            less(results)
 
 
 def cmd_edit(args):
@@ -573,16 +606,38 @@ def cmd_done(args):
         todos[int(args[1])]["status"] = "done"
     set_config("todo",todos)
 
+def cmd_alias(args):
+    aliases = get_config('alias',{})
+    if args[0] in aliases:
+        alias = aliases[args[0]]
+        if 'ARGS' in alias:
+            index = alias.index('ARGS')
+            alias[index:index+1] = args[1:]
+            return alias
+        else:
+            return aliases[args[0]] + args[1:]
+    else:
+        return args
 
-#   +============================+ 
-#   |           MAIN             |
-#   +============================+
+def cmd_set_alias(args):
+    if len(args) < 3:
+        print "Not enough arguments"
+        print CMD_HELP["alias"]
+    elif args[1] in CMD_HELP:
+        print "Aliasing to built-in commands is not allowed"
+        print CMD_HELP["alias"]
+    else:
+        aliases = get_config('alias',{})
+        aliases[args[1]] = args[2:]
+        set_config('alias',aliases)
 
-def main():
-    args = sys.argv[1:]
+def cmd_main(args):
     if len(args) == 0 :
         cmd_ook()
-    elif args[0] == "help":
+    else:
+        args = cmd_alias(args)
+
+    if args[0] == "help":
         cmd_help(args)
     elif args[0] == "log":
         cmd_log()
@@ -618,9 +673,19 @@ def main():
         cmd_todo(args)
     elif args[0] == "done":
         cmd_done(args)
+    elif args[0] == "alias":
+        cmd_set_alias(args)
     else:
         print "Unknown command", args[0]
-        print HELP
+        print "Type 'ook help' to see the available commands"
+
+
+#   +============================+ 
+#   |           MAIN             |
+#   +============================+
+
+def main():
+    cmd_main(sys.argv[1:])
 
 if __name__ == "__main__":
     main()
