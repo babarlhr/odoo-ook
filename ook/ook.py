@@ -3,52 +3,57 @@ import appdirs
 import os
 import os.path
 import sys
-import signal
 import json
 import subprocess
-from   subprocess import check_output
 import shutil
 import socket
 
+
 def pexec(cmd):
-    """ executes shell command cmd with the output 
+    """ executes shell command cmd with the output
         printed in the parent shell. Returns when the
         command has finished.
     """
     os.system(cmd)
 
+
 def rexec(cmd):
-    """ executes shell command cmd with the output 
-        returned as a string when the command has 
+    """ executes shell command cmd with the output
+        returned as a string when the command has
         finished.
     """
     return subprocess.check_output(cmd.split())[:-1]
 
+
 def opexec(cmd):
-    """ same as pexec() but with current working 
+    """ same as pexec() but with current working
         directory set to the odoo server path
     """
     path = odoo_path_or_crash()
     process = subprocess.Popen(cmd.split(), cwd=path)
     return process.wait() == 0
 
+
 def otexec(cmd):
-    """ executes the command cmd with the odoo 
-        server path as current working dir. 
+    """ executes the command cmd with the odoo
+        server path as current working dir.
         All output is hidden. Returns True if the
         call exited successfully, False otherwise.
     """
     path = odoo_path_or_crash()
-    process = subprocess.Popen(cmd.split(), cwd=path, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    process = subprocess.Popen(cmd.split(), cwd=path,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return process.wait() == 0
 
+
 def orexec(cmd):
-    """ same as rexec() but with current working 
+    """ same as rexec() but with current working
         directory set to the odoo server path
     """
     path = odoo_path_or_crash()
     process = subprocess.Popen(cmd.split(), cwd=path, stdout=subprocess.PIPE)
     return process.communicate()[0][:-1]
+
 
 def less(string):
     process = subprocess.Popen(['less'], stdin=subprocess.PIPE)
@@ -61,11 +66,13 @@ def is_port_taken(port):
     result = sock.connect_ex(('127.0.0.1', port))
     return result == 0
 
+
 def find_port(start=8069):
     for port in range(start, start + 10):
         if not is_port_taken(port):
             return port
     return None
+
 
 def iselect(list):
     if len(list) <= 1:
@@ -77,11 +84,12 @@ def iselect(list):
         else:
             return []
 
+
 def edit(files, cwd='/'):
-    editor  = get_config('editor','vim -p')
+    editor = get_config('editor', 'vim -p')
     subprocess.Popen(editor.split() + files, cwd=cwd).wait()
 
-#   +============================+ 
+#   +============================+
 #   |        HELP STRINGS        |
 #   +============================+
 
@@ -97,8 +105,10 @@ BOLD = '\033[1m'
 UNDERLINE = '\033[4m'
 COLOR_END = '\033[0m'
 
+
 def clr(c, txt):
     return c + txt + COLOR_END
+
 
 CMD_HELP = {
     "help": """
@@ -110,10 +120,10 @@ CMD_HELP = {
    start [args]
        [Re]start the Odoo server on port 8069
        with a db named with the current git
-       branch. It will create a database 
+       branch. It will create a database
        with demo data if it doesn't exist.
 
-       [args] will be passed to the odoo 
+       [args] will be passed to the odoo
        server command line.
 
        Ex: ook start -i stock
@@ -123,7 +133,7 @@ CMD_HELP = {
     "reset": """
    reset [args]
        Restart the server with a new database
-       
+
        [args] will be passed to the odoo
        server command line at restart.
     """,
@@ -132,12 +142,12 @@ CMD_HELP = {
        Stops the current server.
     """,
     "log": """
-   log 
+   log
        Prints the last 20 commits in a readable
        format.
     """,
     "find": """
-   find PATTERN 
+   find PATTERN
        Finds files in the repository that
        contains PATTERN in their filename.
 
@@ -153,7 +163,7 @@ CMD_HELP = {
           the 'web/' module
     """,
     "edit": """
-   edit PATTERN 
+   edit PATTERN
        Find files using PATTERN, and edit them
        in your favorite editor. See the help for
        the 'find' command to see how PATTERN
@@ -162,11 +172,11 @@ CMD_HELP = {
        The default configuration is to open the
        selected files in vim tabs. The editor is
        specified in the 'editor' config.
-        
+
        Type 'ook config editor' to check what's
        your current editor.
 
-       Type 'ook config editor PATH ARGS' to 
+       Type 'ook config editor PATH ARGS' to
        change the current editor.
 
        Ex: ook config editor vim -O
@@ -193,7 +203,7 @@ CMD_HELP = {
           branch and install the website module
     """,
     "path": """
-   path 
+   path
        Prints the path to the odoo server directory
     """,
     "fetch": """
@@ -202,7 +212,7 @@ CMD_HELP = {
        to find a branch named BRANCH on one of the
        official repositories and create a new git
        branch with the same name with remote tracking
-       activated 
+       activated
 
        Ex: ook fetch 8.0-false-osv-field-nle
        -> You can checkout 8.0-false-osv-field-nle
@@ -210,14 +220,14 @@ CMD_HELP = {
 
     """,
     "branch": """
-   branch 
+   branch
        Prints the current branch of the odoo repository
     """,
     "git": """
    git [git command]
-       Executes the git command in the odoo repository. 
+       Executes the git command in the odoo repository.
        Ex: cd /var/log; ook git status
-       -> Prints git's status. 
+       -> Prints git's status.
     """,
     "config": """
    config [key] [value]
@@ -234,7 +244,7 @@ CMD_HELP = {
        Creates an alias named ALIAS for the ook command
        CMD. CMD can contain arguments for the aliased
        command. If further arguments are given when
-       invoking the alias, they are appended to the 
+       invoking the alias, they are appended to the
        alias.
 
        Ex: ook alias f find
@@ -249,47 +259,53 @@ CMD_HELP = {
     """,
 }
 
+
 HELP = "\n".join([
     "Usage: ook [COMMAND]",
     "".join(CMD_HELP.values()),
 ])
 
 
-#   +============================+ 
+#   +============================+
 #   |        CONFIG FILE         |
 #   +============================+
 
 def config_file_path():
-    return os.path.join(appdirs.user_config_dir(),'ook.json')
+    return os.path.join(appdirs.user_config_dir(), 'ook.json')
+
 
 def config_file():
     path = config_file_path()
     if os.path.exists(path):
-        return open(path,'r+')
+        return open(path, 'r+')
     else:
-        return open(path,'w+')
+        return open(path, 'w+')
+
 
 def set_config(key, value):
     with config_file() as config:
         contents = config.read()
-        parsed   = json.loads(contents if contents else "{}")
+        parsed = json.loads(contents if contents else "{}")
         parsed[key] = value
         config.seek(0)
         config.truncate(0)
         config.write(json.dumps(parsed, indent=4))
 
+
 def get_config(key, default=None):
     with config_file() as config:
         contents = config.read()
-        parsed   = json.loads(contents if contents else "{}")
+        parsed = json.loads(contents if contents else "{}")
         return parsed.get(key, default)
 
-#   +============================+ 
+#   +============================+
 #   |      REPOSITORY INFO       |
 #   +============================+
 
+
 def odoo_branch():
     return orexec("git rev-parse --abbrev-ref HEAD")
+
 
 def odoo_path():
     def is_path_repo(path):
@@ -301,28 +317,31 @@ def odoo_path():
     def get_odoo(path):
         if is_path_repo(path) and is_path_odoo(path):
             return path
-        elif os.path.samefile(path, os.path.join(path,'..')):
+        elif os.path.samefile(path, os.path.join(path, '..')):
             return None
         else:
-            return get_odoo(os.path.abspath(os.path.join(path,"..")))
+            return get_odoo(os.path.abspath(os.path.join(path, "..")))
 
     path = get_odoo(os.getcwd())
 
     if path:
         set_config('path', path)
         return path
-    
+
     path = get_config('path')
     if path and os.path.exists(path) and is_path_odoo(path):
         return path
 
-    for path in ['~/odoo','~/odoo/odoo','~/code/odoo','~/projects/odoo','~/Projects/odoo','~/Code/odoo/',"/opt/odoo"]:
+    for path in ['~/odoo', '~/odoo/odoo', '~/code/odoo',
+                 '~/projects/odoo', '~/Projects/odoo',
+                 '~/Code/odoo/', "/opt/odoo"]:
         path = os.path.expanduser(path)
         if os.path.exists(path) and is_path_odoo(path) and is_path_repo(path):
-            set_config('path',path)
+            set_config('path', path)
             return path
 
     return None
+
 
 def odoo_path_or_crash():
     path = odoo_path()
@@ -331,9 +350,10 @@ def odoo_path_or_crash():
     else:
         sys.exit("Could not find the odoo server directory.")
 
-#   +============================+ 
+#   +============================+
 #   |         COMMANDS           |
 #   +============================+
+
 
 def cmd_help(args):
     if len(args) < 2:
@@ -344,22 +364,27 @@ def cmd_help(args):
         print "Unknown command", args[1]
         print "Type 'ook help' to see the command list"
 
+
 def cmd_log():
     opexec("git log --oneline -n 20")
+
 
 def cmd_port():
     print find_port()
 
+
 def cmd_branch():
     print '"' + odoo_branch() + '"'
+
 
 def cmd_git(args):
     opexec(" ".join(args))
 
+
 def cmd_ook():
     print ""
     print PURPLE + "      The Odoo Code Monkey Helper" + COLOR_END
-    print "  Type '" + UNDERLINE + "ook help" + COLOR_END +"' to display the help"
+    print "  Type '" + UNDERLINE + "ook help" + COLOR_END + "' to display the help"
     print
     print "\n".join([
         """                         .="=.          """,
@@ -377,16 +402,19 @@ def cmd_ook():
         "",
     ])
 
+
 def cmd_stop():
     pid = get_config("server_pid")
     if pid and pid > 0:
         pexec("pkill -TERM -P " + str(pid))
-        set_config("server_pid",-1)
+        set_config("server_pid", -1)
+
 
 def cmd_dropdb():
     branch = odoo_branch()
     cmd_stop()
     pexec('dropdb ' + branch)
+
 
 def cmd_start(args):
     path = odoo_path_or_crash()
@@ -410,8 +438,9 @@ def cmd_start(args):
     set_config("server_pid", os.getpid())
 
     cmd = opath + " start -d " + branch + " " + " ".join(args)
-    
+
     return subprocess.Popen(cmd.split(), cwd=path).wait()
+
 
 def cmd_tmp_export(args):
     path = odoo_path_or_crash()
@@ -420,10 +449,10 @@ def cmd_tmp_export(args):
 
     branch = args[1]
     try_path = '/tmp/' + branch
-    try_db   = "tmp-"  + branch
+    try_db = "tmp-" + branch
 
-    trials = get_config('tmps',[])
-    
+    trials = get_config('tmps', [])
+
     exists = False
     for trial in trials:
         if trial['path'] == try_path:
@@ -440,7 +469,7 @@ def cmd_tmp_export(args):
             pexec('dropdb ' + trial['db'])
         trials = trials[-3:]
 
-    set_config('tmps',trials)
+    set_config('tmps', trials)
 
     if os.path.exists(try_path):
         shutil.rmtree(try_path)
@@ -449,6 +478,7 @@ def cmd_tmp_export(args):
     print "Exporting branch", branch, "to /tmp ..."
     os.system("cd " + path + "; git archive " + branch + " | tar -x -C " + try_path)
 
+
 def cmd_try(args):
     path = odoo_path_or_crash()
     if len(args) < 2:
@@ -456,7 +486,7 @@ def cmd_try(args):
 
     branch = args[1]
     try_path = '/tmp/' + branch
-    try_db   = "try-"  + branch
+    try_db = "try-" + branch
 
     cmd_fetch(args)
     cmd_tmp_export(args)
@@ -483,26 +513,14 @@ def cmd_try(args):
     print ""
 
     cmd = opath + " start -d " + try_db + " --xmlrpc-port=" + port + " " + " ".join(oargs)
-    
+
     return subprocess.Popen(cmd.split(), cwd=path).wait()
 
-def cmd_test(args):
-    path = odoo_path_or_crash()
-    if len(args) < 2:
-        sys.exit("Please provide the name of the branch to test.")
-
-    branch = args[1]
-    try_path = '/tmp/' + branch
-    try_db   = "try-"  + branch
-
-    cmd_fetch(args)
-    cmd_tmp_export(args)
-
-    #TODO
 
 def cmd_reset(args):
     cmd_dropdb()
     cmd_start(args)
+
 
 def cmd_path():
     print odoo_path_or_crash()
@@ -511,7 +529,7 @@ def cmd_path():
 def cmd_find(args):
     if len(args) < 2:
         print "Please provide a pattern to find"
-        print CMD_HELP["find"];
+        print CMD_HELP["find"]
     else:
         path = odoo_path_or_crash()
         pattern = '"*' + "*".join(args[1:]) + '*"'
@@ -522,10 +540,11 @@ def cmd_find(args):
             pattern = '*' + "*".join(args) + '*'
             pexec('find ' + path + ' -iwholename ' + pattern)
 
+
 def cmd_edit(args):
-    if len (args) < 2:
+    if len(args) < 2:
         print "Please provide a pattern to find files to edit"
-        print CMD_HELP["edit"];
+        print CMD_HELP["edit"]
     else:
         path = odoo_path_or_crash()
         args = args[1:]
@@ -537,12 +556,13 @@ def cmd_edit(args):
 
         results = iselect(results.split())
         if len(results) >= 1:
-            if len (results) == 1:
+            if len(results) == 1:
                 ecwd = os.path.split(results[0])[0]
             else:
                 ecwd = os.path.commonprefix(results)
-                ecwd = os.path.split(ecwd)[0] 
+                ecwd = os.path.split(ecwd)[0]
             edit(results, cwd=ecwd)
+
 
 def cmd_fetch(args):
     if len(args) < 2:
@@ -564,22 +584,24 @@ def cmd_fetch(args):
         if not fetched:
             sys.exit("Branch " + branch + "could not be found on odoo repositories")
 
+
 def cmd_config(args):
     if len(args) == 1:
         path = config_file_path()
         if os.path.exists(path):
             edit([path])
-        else: 
+        else:
             print "Empty Configuration File"
 
     elif len(args) == 2:
-        print get_config(args[1],"None")
-    elif len(args) >  2:
+        print get_config(args[1], "None")
+    elif len(args) > 2:
         print "Setting", args[1], "to", ' '.join(args[2:])
         set_config(args[1], ' '.join(args[2:]))
 
+
 def cmd_todo(args):
-    todos = get_config("todo",[])
+    todos = get_config("todo", [])
     if len(args) == 1:
         if not len(todos):
             print "Nothing to do !"
@@ -589,23 +611,25 @@ def cmd_todo(args):
                     s = GREEN + "DONE" + COLOR_END
                 else:
                     s = RED + "TODO" + COLOR_END
-                print s +  " " + str(i) + ": " + todo["task"] 
+                print s + " " + str(i) + ": " + todo["task"]
     elif len(args) > 1:
         task = " ".join(args[1:])
-        todos.append({ "status":"todo", "task":task })
-        set_config("todo",todos)
+        todos.append({"status": "todo", "task": task})
+        set_config("todo", todos)
+
 
 def cmd_done(args):
-    todos = get_config("todo",[])
+    todos = get_config("todo", [])
     if len(args) == 1:
         if len(todos):
             todos[0]["status"] = "done"
     elif len(args) == 2:
         todos[int(args[1])]["status"] = "done"
-    set_config("todo",todos)
+    set_config("todo", todos)
+
 
 def cmd_alias(args):
-    aliases = get_config('alias',{})
+    aliases = get_config('alias', {})
     if args[0] in aliases:
         alias = aliases[args[0]]
         if 'ARGS' in alias:
@@ -617,6 +641,7 @@ def cmd_alias(args):
     else:
         return args
 
+
 def cmd_set_alias(args):
     if len(args) < 3:
         print "Not enough arguments"
@@ -625,12 +650,13 @@ def cmd_set_alias(args):
         print "Aliasing to built-in commands is not allowed"
         print CMD_HELP["alias"]
     else:
-        aliases = get_config('alias',{})
+        aliases = get_config('alias', {})
         aliases[args[1]] = args[2:]
-        set_config('alias',aliases)
+        set_config('alias', aliases)
+
 
 def cmd_main(args):
-    if len(args) == 0 :
+    if len(args) == 0:
         cmd_ook()
     else:
         args = cmd_alias(args)
@@ -678,12 +704,13 @@ def cmd_main(args):
         print "Type 'ook help' to see the available commands"
 
 
-#   +============================+ 
+#   +============================+
 #   |           MAIN             |
 #   +============================+
 
 def main():
     cmd_main(sys.argv[1:])
+
 
 if __name__ == "__main__":
     main()
