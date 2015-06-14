@@ -6,6 +6,7 @@ import sys
 import signal
 import json
 import subprocess
+from   subprocess import check_output
 import shutil
 import socket
 
@@ -21,8 +22,7 @@ def rexec(cmd):
         returned as a string when the command has 
         finished.
     """
-    process = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
-    return process.communicate()[0][:-1]
+    return subprocess.check_output(cmd.split())[:-1]
 
 def opexec(cmd):
     """ same as pexec() but with current working 
@@ -50,16 +50,32 @@ def orexec(cmd):
     process = subprocess.Popen(cmd.split(), cwd=path, stdout=subprocess.PIPE)
     return process.communicate()[0][:-1]
 
+def less(string):
+    process = subprocess.Popen(['less'], stdin=subprocess.PIPE)
+    process.communicate(input=string)
+    process.wait()
+
+
 def is_port_taken(port):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     result = sock.connect_ex(('127.0.0.1', port))
     return result == 0
 
 def find_port(start=8069):
-    for port in range(start, 8079):
+    for port in range(start, start + 10):
         if not is_port_taken(port):
             return port
     return None
+
+def iselect(list):
+    if len(list) <= 1:
+        return list
+    else:
+        result = rexec('iselect -a -m ' + ' '.join(list))
+        if result:
+            return result.split('\n')
+        else:
+            return []
 
 #   +============================+ 
 #   |        HELP STRINGS        |
@@ -109,12 +125,45 @@ CMD_HELP = {
     """,
     "log": """
    log 
-       Prints the last 20 commits.
+       Prints the last 20 commits in a readable
+       format.
     """,
     "find": """
-   find STR 
+   find PATTERN 
        Finds files in the repository that
-       contains STR in their filename
+       contains PATTERN in their filename.
+
+       Ex: ook find .js
+       -> Lists all javascript files in Odoo
+
+       If multiple space separated patterns are
+       provided, it will search for paths that
+       contains the patterns in matching order.
+
+       Ex: ook find web/ src .xml
+       -> Lists all client side templates inside
+          the 'web/' module
+    """,
+    "edit": """
+   edit PATTERN 
+       Find files using PATTERN, and edit them
+       in your favorite editor. See the help for
+       the 'find' command to see how PATTERN
+       works.
+
+       The default configuration is to open the
+       selected files in vim tabs. The editor is
+       specified in the 'editor' config.
+        
+       Type 'ook config editor' to check what's
+       your current editor.
+
+       Type 'ook config editor PATH ARGS' to 
+       change the current editor.
+
+       Ex: ook config editor vim -O
+       -> sets the current editor to VIM and
+          open files in vertical splits.
     """,
     "try": """
    try BRANCH [args]
@@ -248,9 +297,12 @@ def odoo_path_or_crash():
 
 def cmd_help(args):
     if len(args) < 2:
-        print HELP
-    else:
+        less(HELP)
+    elif args[1] in CMD_HELP.keys():
         print CMD_HELP[args[1]]
+    else:
+        print "Unknown command", args[1]
+        print "Type 'ook help' to see the command list"
 
 def cmd_log():
     opexec("git log --oneline -n 20")
@@ -415,13 +467,51 @@ def cmd_reset(args):
 def cmd_path():
     print odoo_path_or_crash()
 
+
 def cmd_find(args):
     if len(args) < 2:
         print "Please provide a pattern to find"
         print CMD_HELP["find"];
     else:
         path = odoo_path_or_crash()
-        pexec('find ' + path + ' -name "*' + args[1] + '*"') 
+        pattern = '"*' + "*".join(args[1:]) + '*"'
+        args = args[1:]
+        if len(args) == 1:
+            results = rexec('find ' + path + ' -iname ' + '*' + args[0] + '*')
+        else:
+            pattern = '*' + "*".join(args) + '*'
+            results = rexec('find ' + path + ' -iwholename ' + pattern)
+
+        if not results:
+            return
+        elif len(results.split('\n')) < 20:
+            print results
+        else:
+            less(resuts)
+
+
+def cmd_edit(args):
+    if len (args) < 2:
+        print "Please provide a pattern to find files to edit"
+        print CMD_HELP["edit"];
+    else:
+        path = odoo_path_or_crash()
+        args = args[1:]
+        if len(args) == 1:
+            results = rexec('find ' + path + ' -iname ' + '*' + args[0] + '*')
+        else:
+            pattern = '*' + "*".join(args) + '*'
+            results = rexec('find ' + path + ' -iwholename ' + pattern)
+
+        results = iselect(results.split())
+        if len(results) >= 1:
+            if len (results) == 1:
+                ecwd = os.path.split(results[0])[0]
+            else:
+                ecwd = os.path.commonprefix(results)
+                ecwd = os.path.split(ecwd)[0] 
+            editor  = get_config('editor','vim -p')
+            subprocess.Popen(editor.split() + results, cwd=ecwd).wait()
 
 def cmd_fetch(args):
     if len(args) < 2:
@@ -454,8 +544,8 @@ def cmd_config(args):
     elif len(args) == 2:
         print get_config(args[1],"None")
     elif len(args) >  2:
-        print "Setting", args[1], "to", args[2]
-        set_config(args[1], args[2])
+        print "Setting", args[1], "to", ' '.join(args[2:])
+        set_config(args[1], ' '.join(args[2:]))
 
 def cmd_todo(args):
     todos = get_config("todo",[])
@@ -504,6 +594,8 @@ def main():
         print rexec("git rev-parse --abbrev-ref HEAD")
     elif args[0] == "find":
         cmd_find(args)
+    elif args[0] == "edit":
+        cmd_edit(args)
     elif args[0] == "config":
         cmd_config(args)
     elif args[0] == "branch":
