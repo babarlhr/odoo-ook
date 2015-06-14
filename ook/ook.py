@@ -77,6 +77,10 @@ def iselect(list):
         else:
             return []
 
+def edit(files, cwd='/'):
+    editor  = get_config('editor','vim -p')
+    subprocess.Popen(editor.split() + files, cwd=cwd).wait()
+
 #   +============================+ 
 #   |        HELP STRINGS        |
 #   +============================+
@@ -255,8 +259,11 @@ HELP = "\n".join([
 #   |        CONFIG FILE         |
 #   +============================+
 
+def config_file_path():
+    return os.path.join(appdirs.user_config_dir(),'ook.json')
+
 def config_file():
-    path = os.path.join(appdirs.user_config_dir(),'ook.json')
+    path = config_file_path()
     if os.path.exists(path):
         return open(path,'r+')
     else:
@@ -543,8 +550,7 @@ def cmd_edit(args):
             else:
                 ecwd = os.path.commonprefix(results)
                 ecwd = os.path.split(ecwd)[0] 
-            editor  = get_config('editor','vim -p')
-            subprocess.Popen(editor.split() + results, cwd=ecwd).wait()
+            edit(results, cwd=ecwd)
 
 def cmd_fetch(args):
     if len(args) < 2:
@@ -568,12 +574,12 @@ def cmd_fetch(args):
 
 def cmd_config(args):
     if len(args) == 1:
-        with config_file() as config:
-            contents = config.read()
-            if contents:
-                print contents
-            else:
-                print "Empty Configuration"
+        path = config_file_path()
+        if os.path.exists(path):
+            edit([path])
+        else: 
+            print "Empty Configuration File"
+
     elif len(args) == 2:
         print get_config(args[1],"None")
     elif len(args) >  2:
