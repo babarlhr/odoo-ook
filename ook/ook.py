@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 import appdirs
 import os
 import os.path
@@ -183,6 +185,37 @@ CMD_HELP = {
        -> sets the current editor to VIM and
           open files in vertical splits.
     """,
+    "grep": """
+   grep PATTERN [in FINDPATTERN]
+       Find and edit files that contain PATTERN
+       in one or more lines.
+
+       Ex: ook grep ActionManager
+       -> Find files containing 'ActionManager'
+
+       Ex: ook grep ActionManager extend
+       -> Find files containing 'ActionManager'
+          followed by 'extend' on the same line
+
+       It is possible to restrict the inspected
+       files with a pattern. The pattern works
+       exactly the same as in the 'ook find'
+       command, and must be specified after a
+       'in' token.
+
+       Ex: ook grep ActionManager in .js
+       -> Find files containing 'ActionManger'
+          with '.js' in their path
+
+       Ex: ook grep ActionManager in web/ .js
+       -> Find files containing 'ActionManager'
+          in javascript files in the web/ module
+
+       After files have been found, you have
+       the possibility to edit them in your text
+       editor. See the 'ook edit' help for more
+       information.
+    """,
     "try": """
    try BRANCH [args]
        Launches a Odoo server with the code found
@@ -255,7 +288,7 @@ CMD_HELP = {
 
        Ex: ook alias css edit ARGS .css
        ->  ook css website/
-           ˆ- Expands to "ook edit website/ .css"
+           - Expands to "ook edit website/ .css"
     """,
 }
 
@@ -564,6 +597,72 @@ def cmd_edit(args):
             edit(results, cwd=ecwd)
 
 
+def cmd_grep(args):
+    if len(args) < 2:
+        print "Please provide a grep pattern"
+        print CMD_HELP["grep"]
+    else:
+        opath = odoo_path_or_crash()
+        args = args[1:]
+        if 'in' in args:
+            index = args.index('in')
+            pathspec = args[index+1:]
+            args = args[:index]
+            pattern = '.*' + '.*'.join(args) + '.*'
+            pathspec = '*' + '*'.join(pathspec) + '*'
+            results = orexec('git grep --no-color --basic-regexp --full-name ' + pattern + ' -- ' + pathspec)
+        else:
+            pattern = '.*' + '.*'.join(args) + '.*'
+            results = orexec('git grep -w --no-color --basic-regexp --full-name ' + pattern)
+
+        if not results:
+            return
+
+        results = results.split('\n')
+
+        files = {}
+
+        for r in results:
+            if len(r) > 1024:
+                continue
+            try:
+                sep = r.index(':')
+            except:
+                continue
+
+            path = r[:sep]
+            text = r[sep+1:]
+            if path not in files:
+                files[path] = [text]
+            else:
+                files[path].append(text)
+
+        select = ""
+        for path in files:
+            abspath = os.path.join(opath, path)
+            select += "<s>" + abspath + '\n'
+            for line in files[path][:20]:
+                try:
+                    select += line + '\n'
+                except:
+                    continue
+            if len(files[path]) > 20:
+                select += '...\n'
+            select += '\n'
+
+        process = subprocess.Popen(['iselect', '-m'], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        result = process.communicate(input=select)[0][:-1]
+        process.wait()
+
+        if not result:
+            return
+        else:
+            result = result.split('\n')
+        cwd = os.path.commonprefix(result)
+        cwd = os.path.split(cwd)[0]
+        edit(result, cwd=cwd)
+
+
 def cmd_fetch(args):
     if len(args) < 2:
         print "Please provide the branch to fetch"
@@ -676,6 +775,8 @@ def cmd_main(args):
         cmd_find(args)
     elif args[0] == "edit":
         cmd_edit(args)
+    elif args[0] == "grep":
+        cmd_grep(args)
     elif args[0] == "config":
         cmd_config(args)
     elif args[0] == "branch":
