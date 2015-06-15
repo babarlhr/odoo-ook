@@ -2,7 +2,7 @@ from distutils.core import setup
 
 setup(
         name             = "odoo-ook",
-        version          = "2.0.0",
+        version          = "3.0.0",
         author           = "Frederic van der Essen",
         author_email     = "fvdessen+x@gmail.com",
         packages         = ["ook"],
