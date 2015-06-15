@@ -96,6 +96,7 @@ def edit(files, cwd='/'):
 def branch_to_db(branch):
     return branch[:20]
 
+
 #   +============================+
 #   |        HELP STRINGS        |
 #   +============================+
@@ -320,6 +321,37 @@ CMD_HELP = {
        Ex: ook alias css edit ARGS .css
        ->  ook css website/
            - Expands to "ook edit website/ .css"
+    """,
+    "todo": """
+   todo [TASK]:
+       Add the string TASK at the top of the todolist.
+
+       Ex: ook todo save the world.
+
+       If no TASK is specified, print the todolist.
+
+       Ex: ook todo
+       ->  [TODO]  0: save the world.
+           [TODO]  1: pump up the jam.
+
+       See 'ook help done' for marking tasks as done.
+    """,
+
+    "done": """
+   done [TASK_IDS]:
+       Mark the todo tasks with ids 'TASK_IDS' as done.
+
+       Ex: ook todo
+       ->  [TODO]  0: save the world.
+           [TODO]  1: pump up the jam.
+        -  ook done 0
+        -  ook todo
+       ->  [TODO]  0: pump up the jam.
+            ----
+           [DONE]  0: save the world.
+
+       If no TASK_IDS are provided, print all the done
+       tasks.
     """,
 }
 
@@ -812,31 +844,51 @@ def cmd_config(args):
 
 
 def cmd_todo(args):
-    todos = get_config("todo", [])
+    todos = get_config("todo", {})
+
     if len(args) == 1:
-        if not len(todos):
+        if 'todo' not in todos and 'done' not in todos:
             print "Nothing to do !"
         else:
-            for i, todo in enumerate(todos):
-                if todo["status"] == "done":
-                    s = GREEN + "DONE" + COLOR_END
-                else:
-                    s = RED + "TODO" + COLOR_END
-                print s + " " + str(i) + ": " + todo["task"]
+            if 'todo' in todos:
+                for i, todo in enumerate(todos['todo']):
+                    print RED + "[TODO]" + COLOR_END + " {:>2}: ".format(str(i)) + todo
+            if 'todo' in todos and 'done' in todos:
+                print BLUE + ' ---- ' + COLOR_END
+            if 'done' in todos:
+                for i, done in enumerate(todos['done']):
+                    print GREEN + "[DONE]" + COLOR_END + " {:>2}: ".format(str(i)) + done
+                    if i >= 6:
+                        break
     elif len(args) > 1:
         task = " ".join(args[1:])
-        todos.append({"status": "todo", "task": task})
+        if 'todo' not in todos:
+            todos['todo'] = [task]
+        else:
+            todos['todo'].insert(0, task)
         set_config("todo", todos)
 
 
 def cmd_done(args):
-    todos = get_config("todo", [])
+    todos = get_config("todo", {})
     if len(args) == 1:
-        if len(todos):
-            todos[0]["status"] = "done"
-    elif len(args) == 2:
-        todos[int(args[1])]["status"] = "done"
-    set_config("todo", todos)
+        if 'done' in todos:
+            for i, done in enumerate(todos['done']):
+                print GREEN + "[DONE]" + COLOR_END + " {:>2}: ".format(str(i)) + done
+    else:
+        if 'todo' not in todos:
+            return
+        if 'done' not in todos:
+            todos['done'] = []
+
+        for i in args[1:]:
+            i = int(i)
+            if i < len(todos['todo']):
+                todos['done'].insert(0, todos['todo'][i])
+                todos['todo'][i] = None
+
+        todos['todo'] = [x for x in todos['todo'] if x is not None]
+        set_config("todo", todos)
 
 
 def cmd_alias(args):
