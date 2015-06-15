@@ -9,6 +9,7 @@ import json
 import subprocess
 import shutil
 import socket
+import re
 
 
 def pexec(cmd):
@@ -42,6 +43,7 @@ def otexec(cmd):
         All output is hidden. Returns True if the
         call exited successfully, False otherwise.
     """
+    print cmd
     path = odoo_path_or_crash()
     process = subprocess.Popen(cmd.split(), cwd=path,
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -90,6 +92,10 @@ def iselect(list):
 def edit(files, cwd='/'):
     editor = get_config('editor', 'vim -p')
     subprocess.Popen(editor.split() + files, cwd=cwd).wait()
+
+
+def branch_to_db(branch):
+    return branch[:20]
 
 #   +============================+
 #   |        HELP STRINGS        |
@@ -237,23 +243,46 @@ CMD_HELP = {
        Ex: ook try 8.0-fixes-mat -i website
        -> Create an instance for the 8.0-fixes-mat
           branch and install the website module
+
+       If no branch is specified, it will try the
+       last fetched branch.
+
+       Ex: ook fetch fix mat
+           ook try -i website
+       -> Tries the branch selected in the fetch.
     """,
     "path": """
    path
        Prints the path to the odoo server directory
     """,
     "fetch": """
-   fetch BRANCH
-       If there is no local branch named BRANCH, try
-       to find a branch named BRANCH on one of the
-       official repositories and create a new git
-       branch with the same name with remote tracking
-       activated
+   fetch BRANCH_PATTERN
+       Searches for remote branch matching the branch
+       pattern, and makes them available as a local
+       branch. You can then use 'ook try BRANCH_NAME'
+       or 'git checkout BRANCH_NAME', etc.
 
-       Ex: ook fetch 8.0-false-osv-field-nle
-       -> You can checkout 8.0-false-osv-field-nle
-          afterwards
+       Ex: ook fetch fix mat
+       -> Find all remote branches containing 'fix'
+          and 'mat' in that order, then lets you fetch
+          them
 
+    """,
+    "switch": """
+   switch BRANCH_PATTERN
+       Searches for local branches matching the branch
+       pattern, and lets you checkout one of them.
+
+       Ex: ook switch pos fva
+       -> List all local branches containing 'pos' and
+          'fva' and lets you checkout one of them.
+
+       If no pattern is provided, it will switch to
+       the last fetched branch.
+
+       Ex: ook fetch fix mat
+           ook switch
+       -> Switches to the branch selected in the fetch
     """,
     "branch": """
    branch
@@ -478,14 +507,11 @@ def cmd_start(args):
     return subprocess.Popen(cmd.split(), cwd=path).wait()
 
 
-def cmd_tmp_export(args):
+def tmp_export(branch):
     path = odoo_path_or_crash()
-    if len(args) < 2:
-        sys.exit("Please provide the name of the branch to export.")
 
-    branch = args[1]
     try_path = '/tmp/' + branch
-    try_db = "tmp-" + branch
+    try_db = "tmp-" + branch_to_db(branch)
 
     trials = get_config('tmps', [])
 
@@ -517,20 +543,22 @@ def cmd_tmp_export(args):
 
 def cmd_try(args):
     path = odoo_path_or_crash()
-    if len(args) < 2:
-        sys.exit("Please provide the name of the branch to try.")
+    print args
+    if len(args) < 2 or args[1][0] == '-':
+        branches = get_config('fetched', False)
+        oargs = args[1:]
+    else:
+        branches = cmd_fetch(['fetch', args[1]])
+        oargs = args[2:]
 
-    branch = args[1]
+    if not branches:
+        sys.exit("No branch to try. Provide a branch or do a 'ook fetch'")
+
+    branch = branches[0]["branch"]
+
     try_path = '/tmp/' + branch
     try_db = "try-" + branch
-
-    cmd_fetch(args)
-    cmd_tmp_export(args)
-
-    if len(args) < 3:
-        oargs = []
-    else:
-        oargs = args[2:]
+    tmp_export(branch)
 
     opath = try_path + '/odoo.py'
 
@@ -682,20 +710,85 @@ def cmd_fetch(args):
         print "Please provide the branch to fetch"
         print CMD_HELP["fetch"]
     else:
-        branch = args[1]
-        if otexec('git rev-parse --verify ' + branch):
-            print 'Found local branch', branch
+        if len(args) == 2:
+            branch = args[1]
+            if otexec('git rev-parse --verify ' + branch):
+                print 'Found local branch', branch
+                return [{"repo": "?", "branch": branch}]
+
+        pattern = '.*' + '.*'.join(args[1:]) + '.*'
+        pattern = re.compile(pattern)
+
+        branches = orexec("git branch --list --no-color -a")
+        if not branches:
             return
 
-        fetched = False
-        for repo in ['enterprise-dev', 'odoo-dev', 'enterpise', 'odoo']:
-            if otexec('git ls-remote --heads --exit-code ' + repo + ' ' + branch):
-                print "Fetching", branch, "from", repo, "..."
-                otexec('git fetch ' + repo + ' ' + branch + ':' + branch)
-                fetched = True
+        matches = {}
+        for branch in branches.split('\n'):
+            branch = branch[2:]
+            repo, branch = os.path.split(branch)
 
-        if not fetched:
-            sys.exit("Branch " + branch + "could not be found on odoo repositories")
+            if not repo:
+                repo = 'local'
+
+            if 'pull/' in repo:
+                continue
+            elif '/HEAD' in repo:
+                continue
+            elif not pattern.search(os.path.join(repo, branch)):
+                continue
+
+            if 'remotes/' in repo:
+                repo = os.path.split(repo)[1]
+
+            if repo not in matches:
+                matches[repo] = [branch]
+            else:
+                matches[repo].append(branch)
+
+        select = ""
+        for repo in matches:
+            select += repo.upper() + '\n'
+            for branch in matches[repo]:
+                select += "<s:" + repo + ';' + branch + ">" + branch + '\n'
+            select += '\n'
+
+        process = subprocess.Popen(['iselect', '-m'], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        result = process.communicate(input=select)[0][:-1]
+        process.wait()
+
+        if not result:
+            return []
+        else:
+            result = result.split('\n')
+
+        rvalues = []
+        for r in result:
+            repo, branch = r.split(';')
+
+            if repo == 'local':
+                continue
+
+            print "Fetching", branch, "from", repo, "..."
+            otexec('git fetch ' + repo + ' ' + branch + ':' + branch)
+            otexec('git branch ' + branch)
+            rvalues.append({"repo": repo, "branch": branch})
+
+        set_config('fetched', rvalues)
+
+        return rvalues
+
+
+def cmd_switch(args):
+    if len(args) < 2:
+        branches = get_config('fetched', False)
+    else:
+        branches = cmd_fetch(args)
+
+    if not branches:
+        sys.exit("No branch to switch to. Please provide one, or use 'ook fetch'")
+
+    opexec('git checkout ' + branches[0]["branch"])
 
 
 def cmd_config(args):
@@ -807,6 +900,8 @@ def cmd_main(args):
         cmd_stop()
     elif args[0] == "fetch":
         cmd_fetch(args)
+    elif args[0] == "switch":
+        cmd_switch(args)
     elif args[0] == "port":
         cmd_port()
     elif args[0] == "todo":
