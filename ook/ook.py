@@ -43,7 +43,6 @@ def otexec(cmd):
         All output is hidden. Returns True if the
         call exited successfully, False otherwise.
     """
-    print cmd
     path = odoo_path_or_crash()
     process = subprocess.Popen(cmd.split(), cwd=path,
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -413,7 +412,13 @@ def odoo_path_or_crash():
     if path:
         return path
     else:
-        sys.exit("Could not find the odoo server directory.")
+        error = """
+Could not find the odoo server directory.
+Please type 'ook' from inside your odoo
+server directory, its location will be
+remembered.
+"""
+        sys.exit(error)
 
 #   +============================+
 #   |         COMMANDS           |
