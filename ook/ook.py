@@ -184,6 +184,9 @@ CMD_HELP = {
        Ex: ook config editor vim -O
        -> sets the current editor to VIM and
           open files in vertical splits.
+
+       If no PATTERN is provided, the last
+       edited files will be re-opened
     """,
     "grep": """
    grep PATTERN [in FINDPATTERN]
@@ -576,8 +579,17 @@ def cmd_find(args):
 
 def cmd_edit(args):
     if len(args) < 2:
-        print "Please provide a pattern to find files to edit"
-        print CMD_HELP["edit"]
+        results = get_config('edits', [])
+        if len(results) >= 1:
+            if len(results) == 1:
+                ecwd = os.path.split(results[0])[0]
+            else:
+                ecwd = os.path.commonprefix(results)
+                ecwd = os.path.split(ecwd)[0]
+            edit(results, cwd=ecwd)
+        else:
+            print "Please provide a pattern to find files to edit"
+            print CMD_HELP["edit"]
     else:
         path = odoo_path_or_crash()
         args = args[1:]
@@ -594,6 +606,7 @@ def cmd_edit(args):
             else:
                 ecwd = os.path.commonprefix(results)
                 ecwd = os.path.split(ecwd)[0]
+            set_config('edits', results)
             edit(results, cwd=ecwd)
 
 
@@ -658,6 +671,7 @@ def cmd_grep(args):
             return
         else:
             result = result.split('\n')
+            set_config('edits', result)
         cwd = os.path.commonprefix(result)
         cwd = os.path.split(cwd)[0]
         edit(result, cwd=cwd)
