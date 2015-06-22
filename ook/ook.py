@@ -505,7 +505,7 @@ def cmd_port():
 
 
 def cmd_branch():
-    print '"' + odoo_branch() + '"'
+    print odoo_branch()
 
 
 def cmd_git(args):
@@ -607,7 +607,8 @@ def tmp_export(branch):
         for trial in trials[:-3]:
             if os.path.exists(trial['path']):
                 shutil.rmtree(trial['path'])
-            pexec('dropdb ' + trial['db'])
+            if trial['db'] in dblist():
+                pexec('dropdb ' + trial['db'])
         trials = trials[-3:]
 
     set_config('tmps', trials)
