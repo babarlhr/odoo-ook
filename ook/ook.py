@@ -155,6 +155,14 @@ CMD_HELP = {
    stop
        Stops the current server.
     """,
+    "dropdb": """
+   dropdb
+       Drops the database named with current branch.
+    """,
+    "status": """
+   status
+       Shows the status of the current branch.
+    """,
     "log": """
    log
        Prints the last 20 commits in a readable
@@ -509,6 +517,9 @@ def cmd_ook():
         """                    '-- "--'  '--'      """,
         "",
     ])
+
+def cmd_status():
+    opexec("git status")
 
 
 def cmd_stop():
@@ -960,6 +971,8 @@ def cmd_main(args):
 
     if args[0] == "help":
         cmd_help(args)
+    elif args[0] == "status":
+        cmd_status()
     elif args[0] == "log":
         cmd_log()
     elif args[0] == "git":
