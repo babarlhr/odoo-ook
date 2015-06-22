@@ -11,7 +11,9 @@ import shutil
 import socket
 import re
 
+
 odoo_server = None
+
 
 def pexec(cmd):
     """ executes shell command cmd with the output
@@ -60,7 +62,7 @@ def orexec(cmd):
 
 
 def less(string):
-    process = subprocess.Popen(['less','-R'], stdin=subprocess.PIPE)
+    process = subprocess.Popen(['less', '-R'], stdin=subprocess.PIPE)
     process.communicate(input=string)
     process.wait()
 
@@ -143,6 +145,8 @@ ook start [args]
        Ex: ook start -i stock
        -> Start odoo and install the stock
           module
+
+       ALIAS: 'x'
     """,
     "reset": """
 ook reset [args]
@@ -162,6 +166,8 @@ ook dropdb
     "status": """
 ook status
        Shows the status of the current branch.
+
+       ALIAS: 'st'
     """,
     "log": """
 ook log
@@ -183,6 +189,8 @@ ook find PATTERN
        Ex: ook find web/ src .xml
        -> Lists all client side templates inside
           the 'web/' module
+
+        ALIAS: 'f'
     """,
     "edit": """
 ook edit PATTERN
@@ -207,6 +215,8 @@ ook edit PATTERN
 
        If no PATTERN is provided, the last
        edited files will be re-opened
+
+       ALIAS: 'e'
     """,
     "grep": """
 ook grep PATTERN [in FINDPATTERN]
@@ -238,6 +248,8 @@ ook grep PATTERN [in FINDPATTERN]
        the possibility to edit them in your text
        editor. See the 'ook edit' help for more
        information.
+
+       ALIAS: 'ack', 'g'
     """,
     "try": """
 ook try BRANCH [args]
@@ -297,6 +309,8 @@ ook switch BRANCH_PATTERN
        Ex: ook fetch fix mat
            ook switch
        -> Switches to the branch selected in the fetch
+
+       ALIAS: 'sw'
     """,
     "branch": """
 ook branch
@@ -369,6 +383,7 @@ ook done [TASK_IDS]:
     """,
 }
 
+
 def fmt_help(cmd):
     help = CMD_HELP[cmd]
     help1 = help.split('\n')[1].split(' ')
@@ -422,6 +437,7 @@ def get_config(key, default=None):
         contents = config.read()
         parsed = json.loads(contents if contents else "{}")
         return parsed.get(key, default)
+
 
 #   +============================+
 #   |      REPOSITORY INFO       |
@@ -533,6 +549,7 @@ def cmd_ook():
         "",
     ])
 
+
 def cmd_status():
     opexec("git status")
 
@@ -581,9 +598,8 @@ def cmd_start(args):
 
     odoo_server = subprocess.Popen(cmd.split(), cwd=path)
     set_config("server_pid", odoo_server.pid)
-    
+
     return odoo_server.wait()
-    
 
 
 def tmp_export(branch):
@@ -770,10 +786,11 @@ def cmd_grep(args):
         count = 0
         for path in files:
             count += 1
-            if count > 10:
+            if count > 50:
+                select += str(len(files) - 50) + ' MORE FILES ... ' + '\n'
                 break
             abspath = os.path.join(opath, path)
-            select += "<s>" + abspath + '\n'
+            select += "#@[#s#]@#" + abspath + '\n'
             for line in files[path][:8]:
                 try:
                     select += line + '\n'
@@ -783,7 +800,7 @@ def cmd_grep(args):
                 select += '...\n'
             select += '\n'
 
-        process = subprocess.Popen(['iselect', '-m'], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        process = subprocess.Popen(['iselect', '-m', '-d', '#@[#,#]@#'], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
         result = process.communicate(input=select)[0][:-1]
         process.wait()
 
@@ -987,7 +1004,7 @@ def cmd_main(args):
 
     if args[0] == "help":
         cmd_help(args)
-    elif args[0] == "status":
+    elif args[0] == "status" or args[0] == 'st':
         cmd_status()
     elif args[0] == "log":
         cmd_log()
@@ -997,11 +1014,11 @@ def cmd_main(args):
         cmd_path()
     elif args[0] == "test":
         print rexec("git rev-parse --abbrev-ref HEAD")
-    elif args[0] == "find":
+    elif args[0] == "find" or args[0] == 'f':
         cmd_find(args)
-    elif args[0] == "edit":
+    elif args[0] == "edit" or args[0] == 'e':
         cmd_edit(args)
-    elif args[0] == "grep":
+    elif args[0] in ["grep", "ack", "g"]:
         cmd_grep(args)
     elif args[0] == "config":
         cmd_config(args)
@@ -1009,7 +1026,7 @@ def cmd_main(args):
         cmd_branch()
     elif args[0] == "try":
         cmd_try(args)
-    elif args[0] == "start":
+    elif args[0] == "start" or args[0] == 'x':
         cmd_start(args)
     elif args[0] == "dropdb":
         cmd_dropdb(args)
@@ -1019,7 +1036,7 @@ def cmd_main(args):
         cmd_stop()
     elif args[0] == "fetch":
         cmd_fetch(args)
-    elif args[0] == "switch":
+    elif args[0] == "switch" or args[0] == 'sw':
         cmd_switch(args)
     elif args[0] == "port":
         cmd_port()
@@ -1046,8 +1063,7 @@ def main():
             odoo_server.kill()
             odoo_server.kill()
             odoo_server.terminate()
-            odoo_server.terminate()
-            #BeatingDeadHorses
+            odoo_server.terminate()  # Beating dead horses ... !
         sys.exit()
 
 
