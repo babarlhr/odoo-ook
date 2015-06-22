@@ -60,7 +60,7 @@ def orexec(cmd):
 
 
 def less(string):
-    process = subprocess.Popen(['less'], stdin=subprocess.PIPE)
+    process = subprocess.Popen(['less','-R'], stdin=subprocess.PIPE)
     process.communicate(input=string)
     process.wait()
 
@@ -126,12 +126,12 @@ def clr(c, txt):
 
 CMD_HELP = {
     "help": """
-   help [CMD]
+ook help [CMD]
        prints this help, or the help of the
        provided command.
     """,
     "start": """
-   start [args]
+ook start [args]
        [Re]start the Odoo server on port 8069
        with a db named with the current git
        branch. It will create a database
@@ -145,31 +145,31 @@ CMD_HELP = {
           module
     """,
     "reset": """
-   reset [args]
+ook reset [args]
        Restart the server with a new database
 
        [args] will be passed to the odoo
        server command line at restart.
     """,
     "stop": """
-   stop
+ook stop
        Stops the current server.
     """,
     "dropdb": """
-   dropdb
+ook dropdb
        Drops the database named with current branch.
     """,
     "status": """
-   status
+ook status
        Shows the status of the current branch.
     """,
     "log": """
-   log
+ook log
        Prints the last 20 commits in a readable
        format.
     """,
     "find": """
-   find PATTERN
+ook find PATTERN
        Finds files in the repository that
        contains PATTERN in their filename.
 
@@ -185,7 +185,7 @@ CMD_HELP = {
           the 'web/' module
     """,
     "edit": """
-   edit PATTERN
+ook edit PATTERN
        Find files using PATTERN, and edit them
        in your favorite editor. See the help for
        the 'find' command to see how PATTERN
@@ -209,7 +209,7 @@ CMD_HELP = {
        edited files will be re-opened
     """,
     "grep": """
-   grep PATTERN [in FINDPATTERN]
+ook grep PATTERN [in FINDPATTERN]
        Find and edit files that contain PATTERN
        in one or more lines.
 
@@ -240,7 +240,7 @@ CMD_HELP = {
        information.
     """,
     "try": """
-   try BRANCH [args]
+ook try BRANCH [args]
        Launches a Odoo server with the code found
        in the branch BRANCH, without changing the
        current branch of the repository.
@@ -266,11 +266,11 @@ CMD_HELP = {
        -> Tries the branch selected in the fetch.
     """,
     "path": """
-   path
+ook path
        Prints the path to the odoo server directory
     """,
     "fetch": """
-   fetch BRANCH_PATTERN
+ook fetch BRANCH_PATTERN
        Searches for remote branch matching the branch
        pattern, and makes them available as a local
        branch. You can then use 'ook try BRANCH_NAME'
@@ -283,7 +283,7 @@ CMD_HELP = {
 
     """,
     "switch": """
-   switch BRANCH_PATTERN
+ook switch BRANCH_PATTERN
        Searches for local branches matching the branch
        pattern, and lets you checkout one of them.
 
@@ -299,17 +299,17 @@ CMD_HELP = {
        -> Switches to the branch selected in the fetch
     """,
     "branch": """
-   branch
+ook branch
        Prints the current branch of the odoo repository
     """,
     "git": """
-   git [git command]
+ook git [git command]
        Executes the git command in the odoo repository.
        Ex: cd /var/log; ook git status
        -> Prints git's status.
     """,
     "config": """
-   config [key] [value]
+ook config [key] [value]
        Prints the content of the Ook config file.
 
        [key] Prints the value associated with key
@@ -319,7 +319,7 @@ CMD_HELP = {
        Sets the Ook config option 'key' to 'value'
     """,
     "alias": """
-   alias ALIAS CMD:
+ook alias ALIAS CMD:
        Creates an alias named ALIAS for the ook command
        CMD. CMD can contain arguments for the aliased
        command. If further arguments are given when
@@ -337,7 +337,7 @@ CMD_HELP = {
            - Expands to "ook edit website/ .css"
     """,
     "todo": """
-   todo [TASK]:
+ook todo [TASK]:
        Add the string TASK at the top of the todolist.
 
        Ex: ook todo save the world.
@@ -352,7 +352,7 @@ CMD_HELP = {
     """,
 
     "done": """
-   done [TASK_IDS]:
+ook done [TASK_IDS]:
        Mark the todo tasks with ids 'TASK_IDS' as done.
 
        Ex: ook todo
@@ -369,10 +369,25 @@ CMD_HELP = {
     """,
 }
 
+def fmt_help(cmd):
+    help = CMD_HELP[cmd]
+    help1 = help.split('\n')[1].split(' ')
+    help2 = help.split('\n')[2:]
+    out = ''
+    out += help1[0] + ' ' + BOLD + help1[1] + COLOR_END
+    if len(help1) > 2:
+        out += ' ' + ' '.join(help1[2:]) + '\n'
+    else:
+        out += '\n'
+    out += '\n'.join(help2) + '\n'
+    return out
+
 
 HELP = "\n".join([
+    "",
     "Usage: ook [COMMAND]",
-    "".join(CMD_HELP.values()),
+    "",
+    "".join([fmt_help(help) for help in CMD_HELP.keys()]),
 ])
 
 
@@ -475,7 +490,7 @@ def cmd_help(args):
     if len(args) < 2:
         less(HELP)
     elif args[1] in CMD_HELP.keys():
-        print CMD_HELP[args[1]]
+        print "\n" + fmt_help(args[1])[:-1]
     else:
         print "Unknown command", args[1]
         print "Type 'ook help' to see the command list"
