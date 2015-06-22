@@ -97,6 +97,11 @@ def branch_to_db(branch):
     return branch[:20]
 
 
+def dblist():
+    l = [el.split() for el in rexec('psql -l').split('\n')]
+    return [el[0] for el in l if len(el) > 3]
+
+
 #   +============================+
 #   |        HELP STRINGS        |
 #   +============================+
@@ -537,9 +542,12 @@ def cmd_start(args):
         print "       args: " + " ".join(args)
     print ""
 
+    if branch not in dblist():
+        rexec('createdb '+branch)
+
     set_config("server_pid", os.getpid())
 
-    cmd = opath + " start -d " + branch + " " + " ".join(args)
+    cmd = opath + " start -d " + branch + ' --db-filter="^' + branch + '$" ' + " ".join(args)
 
     return subprocess.Popen(cmd.split(), cwd=path).wait()
 
@@ -688,12 +696,13 @@ def cmd_grep(args):
             args = args[:index]
             pattern = '.*' + '.*'.join(args) + '.*'
             pathspec = '*' + '*'.join(pathspec) + '*'
-            results = orexec('git grep --no-color --basic-regexp --full-name ' + pattern + ' -- ' + pathspec)
+            results = orexec('git --no-pager grep --no-color --basic-regexp --full-name ' + pattern + ' -- ' + pathspec)
         else:
             pattern = '.*' + '.*'.join(args) + '.*'
-            results = orexec('git grep -w --no-color --basic-regexp --full-name ' + pattern)
+            results = orexec('git --no-pager grep -w --no-color --basic-regexp --full-name ' + pattern)
 
         if not results:
+            print "No Results"
             return
 
         results = results.split('\n')
@@ -710,21 +719,27 @@ def cmd_grep(args):
 
             path = r[:sep]
             text = r[sep+1:]
+            if path.strip().endswith('.po') or path.strip().endswith('.pyc'):
+                continue
             if path not in files:
                 files[path] = [text]
             else:
                 files[path].append(text)
 
         select = ""
+        count = 0
         for path in files:
+            count += 1
+            if count > 10:
+                break
             abspath = os.path.join(opath, path)
             select += "<s>" + abspath + '\n'
-            for line in files[path][:20]:
+            for line in files[path][:8]:
                 try:
                     select += line + '\n'
                 except:
                     continue
-            if len(files[path]) > 20:
+            if len(files[path]) > 8:
                 select += '...\n'
             select += '\n'
 
@@ -846,20 +861,25 @@ def cmd_config(args):
 def cmd_todo(args):
     todos = get_config("todo", {})
 
+    def has(thing):
+        return thing in todos and len(todos[thing]) > 0
+
     if len(args) == 1:
-        if 'todo' not in todos and 'done' not in todos:
+        if not has('todo') and not has('done'):
             print "Nothing to do !"
         else:
-            if 'todo' in todos:
+            print ""
+            if has('todo'):
                 for i, todo in enumerate(todos['todo']):
                     print RED + "[TODO]" + COLOR_END + " {:>2}: ".format(str(i)) + todo
-            if 'todo' in todos and 'done' in todos:
+            if has('todo') and has('done'):
                 print BLUE + ' ---- ' + COLOR_END
-            if 'done' in todos:
+            if has('done'):
                 for i, done in enumerate(todos['done']):
                     print GREEN + "[DONE]" + COLOR_END + " {:>2}: ".format(str(i)) + done
                     if i >= 6:
                         break
+            print ""
     elif len(args) > 1:
         task = " ".join(args[1:])
         if 'todo' not in todos:
