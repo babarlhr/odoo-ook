@@ -11,6 +11,7 @@ import shutil
 import socket
 import re
 
+odoo_server = None
 
 def pexec(cmd):
     """ executes shell command cmd with the output
@@ -511,19 +512,22 @@ def cmd_ook():
 
 
 def cmd_stop():
-    pid = get_config("server_pid")
+    pid = get_config("ook_pid")
     if pid and pid > 0:
         pexec("pkill -TERM -P " + str(pid))
+        set_config("ook_pid", -1)
         set_config("server_pid", -1)
 
 
 def cmd_dropdb():
     branch = odoo_branch()
     cmd_stop()
+    print "Dropping database", branch
     pexec('dropdb ' + branch)
 
 
 def cmd_start(args):
+    global odoo_server
     path = odoo_path_or_crash()
     opath = path + "/odoo.py"
     branch = odoo_branch()
@@ -545,11 +549,15 @@ def cmd_start(args):
     if branch not in dblist():
         rexec('createdb '+branch)
 
-    set_config("server_pid", os.getpid())
+    set_config("ook_pid", os.getpid())
 
     cmd = opath + " start -d " + branch + ' --db-filter="^' + branch + '$" ' + " ".join(args)
 
-    return subprocess.Popen(cmd.split(), cwd=path).wait()
+    odoo_server = subprocess.Popen(cmd.split(), cwd=path)
+    set_config("server_pid", odoo_server.pid)
+    
+    return odoo_server.wait()
+    
 
 
 def tmp_export(branch):
@@ -587,8 +595,9 @@ def tmp_export(branch):
 
 
 def cmd_try(args):
+    global odoo_server
     path = odoo_path_or_crash()
-    print args
+
     if len(args) < 2 or args[1][0] == '-':
         branches = get_config('fetched', False)
         oargs = args[1:]
@@ -613,6 +622,9 @@ def cmd_try(args):
     else:
         port = str(port)
 
+    if try_db not in dblist():
+        rexec("createdb " + try_db)
+
     print "Starting Odoo:"
     print "     Server: " + opath
     print "   Database: " + try_db
@@ -621,9 +633,10 @@ def cmd_try(args):
         print "       args: " + " ".join(oargs)
     print ""
 
-    cmd = opath + " start -d " + try_db + " --xmlrpc-port=" + port + " " + " ".join(oargs)
+    cmd = opath + " start -d " + try_db + ' --db-filter="^' + try_db + '$" --xmlrpc-port=' + port + " " + " ".join(oargs)
 
-    return subprocess.Popen(cmd.split(), cwd=path).wait()
+    odoo_server = subprocess.Popen(cmd.split(), cwd=path)
+    return odoo_server.wait()
 
 
 def cmd_reset(args):
@@ -970,7 +983,7 @@ def cmd_main(args):
     elif args[0] == "start":
         cmd_start(args)
     elif args[0] == "dropdb":
-        cmd_reset(args)
+        cmd_dropdb(args)
     elif args[0] == "reset":
         cmd_reset(args)
     elif args[0] == "stop":
@@ -997,7 +1010,16 @@ def cmd_main(args):
 #   +============================+
 
 def main():
-    cmd_main(sys.argv[1:])
+    try:
+        cmd_main(sys.argv[1:])
+    except KeyboardInterrupt:
+        if odoo_server:
+            odoo_server.kill()
+            odoo_server.kill()
+            odoo_server.terminate()
+            odoo_server.terminate()
+            #BeatingDeadHorses
+        sys.exit()
 
 
 if __name__ == "__main__":
