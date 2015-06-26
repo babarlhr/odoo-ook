@@ -6,6 +6,7 @@ import os
 import os.path
 import sys
 import json
+import glob
 import subprocess
 import shutil
 import socket
@@ -97,7 +98,7 @@ def edit(files, cwd='/'):
 
 
 def branch_to_db(branch):
-    return branch[:20]
+    return branch
 
 
 def dblist():
@@ -252,10 +253,14 @@ ook grep PATTERN [in FINDPATTERN]
        ALIAS: 'ack', 'g'
     """,
     "try": """
-ook try BRANCH [args]
-       Launches a Odoo server with the code found
-       in the branch BRANCH, without changing the
-       current branch of the repository.
+ook try [BRANCH] [ARGS]
+       Duplicates the code of the current branch or
+       of the selected branch BRANCH in a temporary
+       directory, then launches a odoo instance on
+       that codebase.
+
+       The current repository is not touched, and the
+       currently running servers are kept alive.
 
        Odoo servers launched with 'try' are not
        affected by the start / stop / reset commands
@@ -263,19 +268,38 @@ ook try BRANCH [args]
        The databases created by try are recycled after
        a while
 
-       [args] will be passed to the odoo
-       server command line at restart.
+       [ARGS] will be passed to the odoo server.
+
+       Ex: ook try
+       -> Create an instance for the current branch
 
        Ex: ook try 8.0-fixes-mat -i website
        -> Create an instance for the 8.0-fixes-mat
           branch and install the website module
+    """,
+    "test": """
+ook test [BRANCH] [ARGS]
+       Starts python unit tests on the code found in
+       the current branch, or on branch BRANCH.
+       The code is exported before the tests are
+       started so that you can keep working while the
+       tests are running.
 
-       If no branch is specified, it will try the
-       last fetched branch.
+       Only committed changes are tested.
 
-       Ex: ook fetch fix mat
-           ook try -i website
-       -> Tries the branch selected in the fetch.
+       The databases created by test are recycled after
+       a while
+
+       [ARGS] will be passed to the odoo
+       server command line at startup.
+
+       Ex: ook test
+       -> Run tests on current branch.
+
+       Ex: ook test 8.0-fixes-mat
+       -> Create an instance for the 8.0-fixes-mat
+          branch and test all modules
+
     """,
     "path": """
 ook path
@@ -310,7 +334,7 @@ ook switch BRANCH_PATTERN
            ook switch
        -> Switches to the branch selected in the fetch
 
-       ALIAS: 'sw'
+       ALIAS: 'sw', 'checkout', 'co'
     """,
     "branch": """
 ook branch
@@ -551,6 +575,8 @@ def cmd_ook():
 
 
 def cmd_status():
+    path = odoo_path_or_crash()
+    print "On repo", path
     opexec("git status")
 
 
@@ -574,6 +600,7 @@ def cmd_start(args):
     path = odoo_path_or_crash()
     opath = path + "/odoo.py"
     branch = odoo_branch()
+    cmd = args[0]
 
     if len(args) < 2:
         args = []
@@ -594,7 +621,16 @@ def cmd_start(args):
 
     set_config("ook_pid", os.getpid())
 
-    cmd = opath + " start -d " + branch + ' --db-filter="^' + branch + '$" ' + " ".join(args)
+    if cmd == 'startall':
+        mpath = path + '/addons/*/__init__.py'
+        modules = glob.glob(mpath)
+        modules = set([os.path.basename(os.path.dirname(m)) for m in modules])
+        modules = modules - set(['auth_ldap', 'document_ftp', 'hw_escpos', 'hw_proxy',
+                                 'hw_scanner', 'base_gengo', 'website_gengo', 'website_instantclick'])
+        modules = ",".join(list(modules))
+        cmd = opath + " start -d " + branch + ' --db-filter="^' + branch + '$" -i ' + modules + " ".join(args)
+    else:
+        cmd = opath + " start -d " + branch + ' --db-filter="^' + branch + '$" ' + " ".join(args)
 
     odoo_server = subprocess.Popen(cmd.split(), cwd=path)
     set_config("server_pid", odoo_server.pid)
@@ -604,6 +640,7 @@ def cmd_start(args):
 
 def tmp_export(branch):
     path = odoo_path_or_crash()
+    maxtmps = get_config('maxtmps', 5)
 
     try_path = '/tmp/' + branch
     try_db = "tmp-" + branch_to_db(branch)
@@ -618,14 +655,14 @@ def tmp_export(branch):
     if not exists:
         trials.append({'path': try_path, 'db': try_db})
 
-    if len(trials) > 3:
+    if len(trials) > maxtmps:
         print "Cleaning up old exports... "
-        for trial in trials[:-3]:
+        for trial in trials[:-maxtmps]:
             if os.path.exists(trial['path']):
                 shutil.rmtree(trial['path'])
             if trial['db'] in dblist():
                 pexec('dropdb ' + trial['db'])
-        trials = trials[-3:]
+        trials = trials[-maxtmps:]
 
     set_config('tmps', trials)
 
@@ -640,21 +677,25 @@ def tmp_export(branch):
 def cmd_try(args):
     global odoo_server
     path = odoo_path_or_crash()
+    cmd = args[0]
 
-    if len(args) < 2 or args[1][0] == '-':
-        branches = get_config('fetched', False)
-        oargs = args[1:]
+    oargs = []
+    for index, arg in enumerate(args):
+        if arg[0] == '-':
+            oargs = args[index:]
+            args = args[:index]
+            break
+
+    if len(args) < 2:
+        branch = odoo_branch()
     else:
-        branches = cmd_fetch(['fetch', args[1]])
-        oargs = args[2:]
-
-    if not branches:
-        sys.exit("No branch to try. Provide a branch or do a 'ook fetch'")
-
-    branch = branches[0]["branch"]
+        branches = cmd_fetch(['fetch'] + args[1:])
+        if not branches:
+            sys.exit("No branch selected.")
+        branch = branches[0]["branch"]
 
     try_path = '/tmp/' + branch
-    try_db = "try-" + branch
+    try_db = "tmp-" + branch
     tmp_export(branch)
 
     opath = try_path + '/odoo.py'
@@ -665,9 +706,6 @@ def cmd_try(args):
     else:
         port = str(port)
 
-    if try_db not in dblist():
-        rexec("createdb " + try_db)
-
     print "Starting Odoo:"
     print "     Server: " + opath
     print "   Database: " + try_db
@@ -676,7 +714,28 @@ def cmd_try(args):
         print "       args: " + " ".join(oargs)
     print ""
 
-    cmd = opath + " start -d " + try_db + ' --db-filter="^' + try_db + '$" --xmlrpc-port=' + port + " " + " ".join(oargs)
+    if cmd == 'test':
+        mpath = path + '/addons/*/__init__.py'
+        modules = glob.glob(mpath)
+        modules = set([os.path.basename(os.path.dirname(m)) for m in modules])
+        modules = modules - set(['auth_ldap', 'document_ftp', 'hw_escpos', 'hw_proxy',
+                                 'hw_scanner', 'base_gengo', 'website_gengo', 'website_instantclick'])
+        modules = ",".join(list(modules))
+
+        if try_db in dblist():
+            rexec("dropdb " + try_db)
+            rexec("createdb " + try_db)
+
+        cmd = opath + " start -d " + try_db + ' --db-filter="^' + try_db + '$" --xmlrpc-port=' + port
+        cmd += ' --test-enable --stop-after-init --log-level=test --max-cron-threads=0'
+        cmd += ' -i ' + modules
+        cmd += ' ' + ' '.join(oargs)
+
+    else:
+        if try_db not in dblist():
+            rexec("createdb " + try_db)
+
+        cmd = opath + " start -d " + try_db + ' --db-filter="^' + try_db + '$" --xmlrpc-port=' + port + " " + " ".join(oargs)
 
     odoo_server = subprocess.Popen(cmd.split(), cwd=path)
     return odoo_server.wait()
@@ -875,27 +934,26 @@ def cmd_fetch(args):
         for r in result:
             repo, branch = r.split(';')
 
+            rvalues.append({"repo": repo, "branch": branch})
+
             if repo == 'local':
                 continue
 
             print "Fetching", branch, "from", repo, "..."
             otexec('git fetch ' + repo + ' ' + branch + ':' + branch)
             otexec('git branch ' + branch)
-            rvalues.append({"repo": repo, "branch": branch})
-
-        set_config('fetched', rvalues)
 
         return rvalues
 
 
 def cmd_switch(args):
     if len(args) < 2:
-        branches = get_config('fetched', False)
+        branches = None
     else:
         branches = cmd_fetch(args)
 
     if not branches:
-        sys.exit("No branch to switch to. Please provide one, or use 'ook fetch'")
+        sys.exit("No branch to switch to.")
 
     opexec('git checkout ' + branches[0]["branch"])
 
@@ -1012,8 +1070,6 @@ def cmd_main(args):
         cmd_git(args)
     elif args[0] == "path":
         cmd_path()
-    elif args[0] == "test":
-        print rexec("git rev-parse --abbrev-ref HEAD")
     elif args[0] == "find" or args[0] == 'f':
         cmd_find(args)
     elif args[0] == "edit" or args[0] == 'e':
@@ -1024,19 +1080,19 @@ def cmd_main(args):
         cmd_config(args)
     elif args[0] == "branch":
         cmd_branch()
-    elif args[0] == "try":
+    elif args[0] == "try" or args[0] == 'test':
         cmd_try(args)
-    elif args[0] == "start" or args[0] == 'x':
+    elif args[0] in ["start", "x", "startall"]:
         cmd_start(args)
     elif args[0] == "dropdb":
-        cmd_dropdb(args)
+        cmd_dropdb()
     elif args[0] == "reset":
         cmd_reset(args)
     elif args[0] == "stop":
         cmd_stop()
     elif args[0] == "fetch":
         cmd_fetch(args)
-    elif args[0] == "switch" or args[0] == 'sw':
+    elif args[0] in ["switch", "sw", "checkout", "co"]:
         cmd_switch(args)
     elif args[0] == "port":
         cmd_port()
