@@ -29,7 +29,12 @@ def rexec(cmd):
         returned as a string when the command has
         finished.
     """
-    return subprocess.check_output(cmd.split())[:-1]
+    try:
+        output = subprocess.check_output(cmd.split(), stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError as exc:
+        return exc.output[:-1]
+    else:
+        return output[:-1]
 
 
 def opexec(cmd):
@@ -104,6 +109,40 @@ def branch_to_db(branch):
 def dblist():
     l = [el.split() for el in rexec('psql -l').split('\n')]
     return [el[0] for el in l if len(el) > 3]
+
+
+def ignored(path):
+    path = path.strip()
+    return path.endswith('.pyc') or path.endswith('.po')
+
+
+# FIXME: use gitpython ?
+def git_status():
+    status = {
+        'untracked': [],
+        'modified': [],
+        'removed': [],
+        'ignored': [],
+    }
+
+    path = odoo_path_or_crash()
+    stat = orexec('git status --porcelain')
+    if not stat:
+        return status
+
+    stat = [[line[0:2], os.path.join(path, line[3:])] for line in stat.split('\n')]
+    for s in stat:
+        if s[0] == '??':
+            status['untracked'].append(s[1])
+        elif s[0] == '!!':
+            status['ignored'].append(s[1])
+        else:
+            if os.path.exists(s[1]):
+                status['modified'].append(s[1])
+            else:
+                status['removed'].append(s[1])
+
+    return status
 
 
 #   +============================+
@@ -573,6 +612,244 @@ def cmd_ook():
         "",
     ])
 
+EXTRA_WORDS = set(['EAN', 'EAN-13', 'EAN-8', 'nbsp', 'barcode',
+                   'barcodes', 'UPC', 'UPC-A', 'UPC-E', 'Odoo', 'POS', 'CRM', 'MRP', 'PosBox',
+                   'str', 'multi', 'div', 'textarea', 'kanban', 'px', 'ip', 'hostname',
+                  'desc', 'resize', 'resized', 'login', 'API', 'TCP', 'lookup'])
+
+EXTRA_WORDS = [w.lower() for w in EXTRA_WORDS]
+
+
+def spell_check(path, content):
+    process = subprocess.Popen(['aspell', '-l', 'en_US', '--encoding=utf-8', '--mode=html',
+                                '--add-html-skip=t-name,t-esc,t-if,t-raw,t-foreach,t-as,t-set,content',
+                                '-a'],
+                               stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    result = process.communicate(input=content)[0][:-1]
+    process.wait()
+    result = result.split('\n')[1:]
+    result = [r for r in result if len(r) and r[0] != '*']
+
+    if not len(result):
+        return None
+
+    words = {}
+    for line in result:
+        line = line.split()
+        word = line[1]
+        if word.lower() not in EXTRA_WORDS and word not in words:
+            words[word] = line[4:12]
+
+    out = ''
+    content = content.split('\n')
+    for word in words:
+        out += word + ' : ' + ' '.join(words[word]) + '\n'
+        count = 0
+        reg = re.compile("(?:^|\W)" + word + "(?:$|\W)")
+        for i, line in enumerate(content):
+            if reg.search(line):
+                count += 1
+                out += "{:>5}:".format(i) + " " + line + "\n"
+            if count >= 8:
+                out += " ...\n"
+                break
+
+    return out[:-1]
+
+
+def py_path_check(path, content):
+    path, file = os.path.split(path)
+    path = path + '/'
+    if file in ['__init__.py', '__openerp__.py']:
+        return None
+    if 'addons/' in path:
+        if 'tests/' not in path and 'models/' not in path and 'controllers/' not in path:
+            return "python files should be in 'models/', 'tests/' or 'controllers/'"
+        if 'controllers/' in path and file != 'main.py':
+            return "The controller file should be named 'main.py'"
+    return None
+
+
+def xml_path_check(path, content):
+    path, file = os.path.split(path)
+    path = path + '/'
+    if 'addons/' not in path:
+        return None
+    if ('_demo' in file or '_data' in file) and 'data/' not in path:
+        return "Demo and Data files should be in the 'data/' subdirectory."
+    elif 'data/' in path and ('_demo' not in file and '_data' not in file):
+        return "Demo and Data files should be suffixed with '_demo.xml' or '_data.xml'"
+    elif '_security' in file and 'security/' not in path:
+        return "Security files should be in the 'security/' subdirectory."
+    elif 'security/' in path and '_security' not in file:
+        return "Security files should be suffixed with '_security.xml'"
+    elif ('_templates' in file or '_views' in file) and 'views/' not in path:
+        return "Views and templates should be in the 'views/' subdirectory."
+    elif 'views/' in path and ('_templates' not in file and '_views' not in file):
+        return "Views and and templates should be suffixed with '_views.xml' or '_templates.xml'"
+    elif 'static/src/xml/' not in path and 'views/' not in path and 'security/' not in path and 'data/' not in path:
+        return "Xml files should be placed in the appropriate subfolder"
+
+
+def code_spell_check(path, content):
+    reg = re.compile("((?:'.*?[^']')|(?:\".*?[^\"]\"))")
+    reg_css = re.compile("\s[.#<>]")
+    content = content.split('\n')
+    textchars = set(list("abcdefghijklmnopqrstuvwxyz0123456789:,. \t"))
+    out = ""
+
+    def textratio(txt):
+        r = 0
+        for c in txt:
+            if c.lower() in textchars:
+                r += 1.0
+        ratio = r / float(len(txt))
+        return ratio
+
+    for line in content:
+        strings = reg.findall(line)
+        strings = [s[1:-1] for s in strings if ' ' in s]  # ignoring keywords
+        strings = [s for s in strings if textratio(s) > 0.85]  # ignore code
+        strings = [s for s in strings if s[0] not in ['.', '#', "<", ">"] and s[-1] not in ["<", ">"]]  # ignoring css and xml strings
+        strings = [s for s in strings if not reg_css.search(s)]  # further ignoring
+        strings = [s for s in strings if s != 'use strict']
+
+        if strings:
+            out += '\n'.join(strings) + '\n'
+
+    if out:
+        return spell_check(path, out)
+    else:
+        return None
+
+
+PY_CHECKS = {
+    "spell_check": spell_check,
+    "code_spell_check": code_spell_check,
+    "py_path_check": py_path_check,
+    "xml_path_check": xml_path_check,
+}
+
+
+CHECKS = {
+    ".xml": [
+        {"ignore": "/lib/"},
+        {"cmd": "xmllint --noout", "sev": "error", "msg": "Invalid XML File."},  # Fails if 'cmd' outputs
+        {"regexp": "model=.*id=", "sev": "warn", "msg": "Put the 'id=' before 'model='"},
+        {"py": "spell_check", "sev": "spell", "msg": "Spelling Mistakes."},
+        {"py": "xml_path_check", "sev": "warn", "msg": "File Naming Recommendations."},
+    ],
+    ".js": [
+        {"ignore": "\.min\.js$"},  # Regexp on the path will ignore file for further tests
+        {"ignore": "\/lib\/"},
+        {"regexp": "debugger", "sev": "error", "msg": "Debugger Directives."},  # Must not match a line
+        {"regexp": "console\.log", "sev": "warn", "msg": "console.log()"},
+        {"assert": "use strict", "sev": "error", "msg": 'Missing "use strict"'},  # Opposite of 'regexp'
+        {"py": "code_spell_check", "sev": "spell", "msg": "Spelling Mistakes."},
+        {"cmd": "jshint", "sev": "warn", "msg": "JSHint"},
+    ],
+    ".py": [
+        {"ignore": "/lib/"},
+        {"regexp": "(?:import.*pudb|import.*pdb|set_trace\(\))", "sev": "error", "msg": "Debugger Directives."},
+        {"ignore": "__init__\.py"},
+        {"regexp": "fields\.(?!.*help=)(?=.*\))", "sev": "warn", "msg": "Undocumented Fields."},
+        {
+            "cmd": "flake8 --exit-zero --ignore=W,E501,E301,E302,E123,E126,E127,E128,E265,E231",
+            "sev": "warn",
+            "msg": "PEP8",
+        },
+        {"py": "py_path_check", "sev": "warn", "msg": "File Naming Recommendations."},
+        {"py": "code_spell_check", "sev": "spell", "msg": "Spelling Mistakes."},
+    ],
+}
+
+
+def cmd_check(args):
+
+    def search(regexp, text):
+        r = re.compile(regexp)
+        return r.search(text)
+
+    def contents(path):
+        with open(path, 'r') as f:
+            return f.read()
+
+    def print_stat(sev, path, msg=None):
+        print {
+            'ok': BLUE + '   OK:',
+            'error': RED + 'ERROR:',
+            'warn': PURPLE + ' WARN:',
+            'spell': UNDERLINE + 'SPELL:',
+        }[sev] + ' ' + path + ((' : ' + msg) if msg else '') + COLOR_END
+
+    nowarn = 'error' in args
+    if nowarn:
+        args.remove('error')
+
+    onlyspell = 'spell' in args
+    if onlyspell:
+        args.remove('spell')
+
+    if len(args) == 1:
+        paths = git_status()['modified']
+    else:
+        paths = find_paths(args)
+
+    for path in paths:
+        exts = [ext for ext in CHECKS if path.endswith(ext)]
+        if not len(exts):
+            continue
+        if os.path.isdir(path):
+            continue
+
+        ext = exts[0]
+        content = contents(path)
+        tests = CHECKS[ext]
+        ok = True
+        checked = False
+
+        for test in tests:
+            if test.get('ignore') and search(test.get('ignore'), path):
+                break
+            if nowarn and test.get('sev') in ['warn', 'spell']:
+                continue
+            if onlyspell and test.get('sev', 'spell') != 'spell':
+                continue
+            if not onlyspell and test.get('sev') == 'spell':
+                continue
+            checked = True
+
+            if test.get('cmd'):
+                errors = rexec(test.get('cmd') + ' ' + path)
+                if errors:
+                    ok = False
+                    print_stat(test.get('sev', 'error'), path, test.get('msg'))
+                    print errors
+            elif test.get('py'):
+                errors = PY_CHECKS[test.get('py')](path, content)
+                if errors:
+                    ok = False
+                    print_stat(test.get('sev', 'error'), path, test.get('msg'))
+                    print errors
+            elif test.get('regexp') or test.get('assert'):
+                reg = re.compile(test.get('regexp') or test.get('assert'))
+                lines = content.split('\n')
+                valid = True
+                out = ''
+                for i, line in enumerate(lines):
+                    if reg.search(line):
+                        valid = False
+                        out += "{:>5}: ".format(str(i)) + " " + line + "\n"
+                if test.get('assert'):
+                    valid = not valid
+                if not valid:
+                    ok = False
+                    print_stat(test.get('sev', 'error'), path, test.get('msg'))
+                    if out:
+                        print out[:-1]
+        if checked and ok:
+            print_stat('ok', path)
+
 
 def cmd_status():
     path = odoo_path_or_crash()
@@ -617,7 +894,7 @@ def cmd_start(args):
     print ""
 
     if branch not in dblist():
-        rexec('createdb '+branch)
+        rexec('createdb ' + branch)
 
     set_config("ook_pid", os.getpid())
 
@@ -765,6 +1042,41 @@ def cmd_find(args):
             pexec('find ' + path + ' -iwholename ' + pattern)
 
 
+def find_paths(args):
+    path = odoo_path_or_crash()
+    args = args[1:]
+    if len(args) == 1:
+        if os.path.exists(args[0]):
+            results = args[0]
+        else:
+            results = rexec('find ' + path + ' -iwholename ' + '*' + args[0] + '*')
+    else:
+        pattern = '*' + "*".join(args) + '*'
+        results = rexec('find ' + path + ' -iwholename ' + pattern)
+
+    results = [r for r in results.split() if not ignored(r)]
+
+    if len(results) > 1:
+        results = iselect(results)
+
+    fresults = []
+
+    def visit(root, dirname, names):
+        for name in names:
+            # print root, dirname, name
+            path = os.path.join(dirname, name)
+            if not ignored(path):
+                fresults.append(path)
+
+    for r in results:
+        if os.path.isdir(r):
+            os.path.walk(r, visit, r)
+        else:
+            fresults.append(r)
+
+    return fresults
+
+
 def cmd_edit(args):
     if len(args) < 2:
         results = get_config('edits', [])
@@ -779,15 +1091,7 @@ def cmd_edit(args):
             print "Please provide a pattern to find files to edit"
             print CMD_HELP["edit"]
     else:
-        path = odoo_path_or_crash()
-        args = args[1:]
-        if len(args) == 1:
-            results = rexec('find ' + path + ' -iname ' + '*' + args[0] + '*')
-        else:
-            pattern = '*' + "*".join(args) + '*'
-            results = rexec('find ' + path + ' -iwholename ' + pattern)
-
-        results = iselect(results.split())
+        results = find_paths(args)
         if len(results) >= 1:
             if len(results) == 1:
                 ecwd = os.path.split(results[0])[0]
@@ -807,7 +1111,7 @@ def cmd_grep(args):
         args = args[1:]
         if 'in' in args:
             index = args.index('in')
-            pathspec = args[index+1:]
+            pathspec = args[index + 1:]
             args = args[:index]
             pattern = '.*' + '.*'.join(args) + '.*'
             pathspec = '*' + '*'.join(pathspec) + '*'
@@ -833,8 +1137,8 @@ def cmd_grep(args):
                 continue
 
             path = r[:sep]
-            text = r[sep+1:]
-            if path.strip().endswith('.po') or path.strip().endswith('.pyc'):
+            text = r[sep + 1:]
+            if ignored(path):
                 continue
             if path not in files:
                 files[path] = [text]
@@ -1032,7 +1336,7 @@ def cmd_alias(args):
         alias = aliases[args[0]]
         if 'ARGS' in alias:
             index = alias.index('ARGS')
-            alias[index:index+1] = args[1:]
+            alias[index:index + 1] = args[1:]
             return alias
         else:
             return aliases[args[0]] + args[1:]
@@ -1064,6 +1368,8 @@ def cmd_main(args):
         cmd_help(args)
     elif args[0] == "status" or args[0] == 'st':
         cmd_status()
+    elif args[0] == "check":
+        cmd_check(args)
     elif args[0] == "log":
         cmd_log()
     elif args[0] == "git":
