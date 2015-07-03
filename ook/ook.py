@@ -486,8 +486,6 @@ HELP = "\n".join([
 #   +============================+
 
 def config_file_path():
-    print 'config_file_path'
-    raise Exception('error')
     return os.path.join(appdirs.user_config_dir(), 'ook.json')
 
 
