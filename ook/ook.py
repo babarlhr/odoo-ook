@@ -877,7 +877,7 @@ DEPS = {
         "npm": ["jshint"]
     },
     "linux": {  # Packages to install on Linux
-        "apt-get": ["git", "aspell", "iselect", "libxml2-utils", "npm"],
+        "apt-get": ["git", "aspell", "iselect", "libxml2-utils", "nodejs", "npm"],
         "npm": ["jshint"]
     }
 }
@@ -1450,7 +1450,7 @@ def cmd_main(args):
         cmd_ook()
         return
     else:
-        if os.getuid() != 0: # cmd_alias will create a config file. if it is launched as root, shit happens.
+        if os.getuid() != 0:  # cmd_alias will create a config file. if it is launched as root, shit happens.
             args = cmd_alias(args)
 
     if args[0] == "help":
