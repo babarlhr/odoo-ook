@@ -99,7 +99,7 @@ def iselect(list):
 
 def edit(files, cwd='/'):
     editor = get_config('editor', 'vim -p')
-    if not _cmd_exists(editor.split()):
+    if not _cmd_exists(editor.split()[0]):
         print 'Editor not found: ' + editor.split()
         print 'You can either install the editor or configure another one.'
         print 'Ex: ook config editor emacs'
