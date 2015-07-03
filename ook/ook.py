@@ -172,6 +172,13 @@ ook help [CMD]
        prints this help, or the help of the
        provided command.
     """,
+    "install": """
+ook install
+       install the non-python dependencies. This
+       command must be run as the administrator.
+       
+       Ex: sudo ook install
+    """,
     "start": """
 ook start [args]
        [Re]start the Odoo server on port 8069
@@ -592,6 +599,10 @@ def cmd_git(args):
 
 
 def cmd_ook():
+    if not _is_installed():
+        print RED + "Installation not complete ... " + COLOR_END
+        print "Type '" + UNDERLINE + "sudo ook install" + COLOR_END + "' to complete the installation."
+        sys.exit(1)
     print ""
     print PURPLE + "      The Odoo Code Monkey Helper" + COLOR_END
     print "  Type '" + UNDERLINE + "ook help" + COLOR_END + "' to display the help"
@@ -849,6 +860,57 @@ def cmd_check(args):
                         print out[:-1]
         if checked and ok:
             print_stat('ok', path)
+
+DEPS = {
+    "deps": ["git", "aspell", "iselect"],  # Those commands should be available when installed
+    "osx": {
+        "brew": ["git", "aspell"],
+        "port": ["iselect"],
+    },
+    "linux": {
+        "apt-get": ["git", "aspell", "iselect"],
+    }
+}
+
+
+def _cmd_exists(cmd):
+    return subprocess.call("type " + cmd, shell=True, 
+                           stdout=subprocess.PIPE, 
+                           stderr=subprocess.PIPE) == 0
+
+
+def _is_installed(): 
+    for dep in DEPS["deps"]:
+        if not _cmd_exists(dep):
+            return False
+    return True
+
+
+def cmd_install():
+    if _is_installed():
+        print "Already installed."
+        return
+    if os.getuid() != 0:
+        sys.exit("Please run this command as the administrator ( sudo ook install )")
+
+    if sys.platform.startswith('linux'):
+        if not _cmd_exists("apt-get"):
+            print "Apt-Get not found; please install the following dependencies manually."
+            print ' '.join(DEPS["linux"]["apt-get"])
+            sys.exit(1)
+        pexec("apt-get install " + ' '.join(DEPS["linux"]["apt-get"]))
+
+    if sys.platform.startswith('darwin'):
+        if not _cmd_exists("port"):
+            print "MacPorts not found; please install macports and try again."
+            print "https://www.macports.org/install.php"
+            sys.exit(1)
+        if not _cmd_exists("brew"):
+            print "Homebrew not found; please install Homebrew and try again."
+            print "http://brew.sh/"
+            sys.exit(1)
+        pexec("port install " + ' '.join(DEPS["osx"]["port"]))
+        pexec("brew install " + ' '.join(DEPS["osx"]["brew"]))
 
 
 def cmd_status():
@@ -1366,6 +1428,8 @@ def cmd_main(args):
 
     if args[0] == "help":
         cmd_help(args)
+    if args[0] == "install":
+        cmd_install()
     elif args[0] == "status" or args[0] == 'st':
         cmd_status()
     elif args[0] == "check":

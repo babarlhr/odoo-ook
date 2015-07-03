@@ -12,6 +12,7 @@ ook may not be as helpful.
 ## Install
 
     sudo pip install odoo-ook
+    sudo ook install
 
 ## Usage Examples
     
