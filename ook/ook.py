@@ -877,7 +877,7 @@ DEPS = {
         "npm": ["jshint"]
     },
     "linux": {  # Packages to install on Linux
-        "apt-get": ["git", "aspell", "iselect", "libxml2-utils", "nodejs", "npm"],
+        "apt-get": ["git", "aspell", "iselect", "libxml2-utils", "nodejs"],
         "npm": ["jshint"]
     }
 }
