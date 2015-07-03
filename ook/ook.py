@@ -99,6 +99,11 @@ def iselect(list):
 
 def edit(files, cwd='/'):
     editor = get_config('editor', 'vim -p')
+    if not _cmd_exists(editor.split()):
+        print 'Editor not found: ' + editor.split()
+        print 'You can either install the editor or configure another one.'
+        print 'Ex: ook config editor emacs'
+        sys.exit(1)
     subprocess.Popen(editor.split() + files, cwd=cwd).wait()
 
 
@@ -176,7 +181,7 @@ ook help [CMD]
 ook install
        install the non-python dependencies. This
        command must be run as the administrator.
-       
+
        Ex: sudo ook install
     """,
     "start": """
@@ -481,6 +486,8 @@ HELP = "\n".join([
 #   +============================+
 
 def config_file_path():
+    print 'config_file_path'
+    raise Exception('error')
     return os.path.join(appdirs.user_config_dir(), 'ook.json')
 
 
@@ -831,6 +838,7 @@ def cmd_check(args):
             checked = True
 
             if test.get('cmd'):
+                assert_cmd(test.get('cmd').split()[0])
                 errors = rexec(test.get('cmd') + ' ' + path)
                 if errors:
                     ok = False
@@ -862,28 +870,36 @@ def cmd_check(args):
             print_stat('ok', path)
 
 DEPS = {
-    "deps": ["git", "aspell", "iselect"],  # Those commands should be available when installed
-    "osx": {
-        "brew": ["git", "aspell"],
+    "deps": ["git", "aspell", "iselect", "jshint", "xmllint", "npm"],  # Those commands should be available when installed
+    "osx": {  # Packages to install on OSX
+        "brew": ["git", "aspell", "node"],
         "port": ["iselect"],
+        "npm": ["jshint"]
     },
-    "linux": {
-        "apt-get": ["git", "aspell", "iselect"],
+    "linux": {  # Packages to install on Linux
+        "apt-get": ["git", "aspell", "iselect", "libxml2-utils", "npm"],
+        "npm": ["jshint"]
     }
 }
 
 
 def _cmd_exists(cmd):
-    return subprocess.call("type " + cmd, shell=True, 
-                           stdout=subprocess.PIPE, 
+    return subprocess.call("type " + cmd, shell=True,
+                           stdout=subprocess.PIPE,
                            stderr=subprocess.PIPE) == 0
 
 
-def _is_installed(): 
-    for dep in DEPS["deps"]:
-        if not _cmd_exists(dep):
-            return False
-    return True
+def assert_cmd(cmd):
+    if not _cmd_exists(cmd):
+        sys.exit("Command not found: " + cmd)
+
+
+def _missing_deps():
+    return [dep for dep in DEPS["deps"] if not _cmd_exists(dep)]
+
+
+def _is_installed():
+    return len(_missing_deps()) == 0
 
 
 def cmd_install():
@@ -899,6 +915,7 @@ def cmd_install():
             print ' '.join(DEPS["linux"]["apt-get"])
             sys.exit(1)
         pexec("apt-get install " + ' '.join(DEPS["linux"]["apt-get"]))
+        pexec("npm install -g " + ' '.join(DEPS["linux"]["npm"]))
 
     if sys.platform.startswith('darwin'):
         if not _cmd_exists("port"):
@@ -911,6 +928,15 @@ def cmd_install():
             sys.exit(1)
         pexec("port install " + ' '.join(DEPS["osx"]["port"]))
         pexec("brew install " + ' '.join(DEPS["osx"]["brew"]))
+        pexec("npm install -g " + ' '.join(DEPS["linux"]["npm"]))
+
+    if not _is_installed():
+        print RED + "Installation Errors." + COLOR_END
+        print "The following packages could not be installed:"
+        print " ".join(_missing_deps())
+        sys.exit(1)
+    else:
+        print GREEN + "Installation complete." + COLOR_END
 
 
 def cmd_status():
@@ -1424,7 +1450,8 @@ def cmd_main(args):
         cmd_ook()
         return
     else:
-        args = cmd_alias(args)
+        if os.getuid() != 0: # cmd_alias will create a config file. if it is launched as root, shit happens.
+            args = cmd_alias(args)
 
     if args[0] == "help":
         cmd_help(args)
@@ -1448,6 +1475,8 @@ def cmd_main(args):
         cmd_grep(args)
     elif args[0] == "config":
         cmd_config(args)
+    elif args[0] == "configpath":
+        print config_file_path()
     elif args[0] == "branch":
         cmd_branch()
     elif args[0] == "try" or args[0] == 'test':

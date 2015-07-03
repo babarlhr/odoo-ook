@@ -9,7 +9,8 @@ setup(
         url              = "https://github.com/fvdsn/odoo-ook",
         license          = "MIT",
         install_requires = [
-            "appdirs"
+            "appdirs",
+            "flake"
         ],
         scripts          = [
             "scripts/ook"
