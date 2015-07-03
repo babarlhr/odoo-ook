@@ -679,8 +679,8 @@ def py_path_check(path, content):
     if file in ['__init__.py', '__openerp__.py']:
         return None
     if 'addons/' in path:
-        if 'tests/' not in path and 'models/' not in path and 'controllers/' not in path:
-            return "python files should be in 'models/', 'tests/' or 'controllers/'"
+        if 'tests/' not in path and 'models/' not in path and 'controllers/' and 'wizard/' not in path:
+            return "python files should be in 'models/', 'tests/' , 'wizard/' or 'controllers/'"
         if 'controllers/' in path and file != 'main.py':
             return "The controller file should be named 'main.py'"
     return None
