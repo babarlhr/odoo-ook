@@ -1451,7 +1451,7 @@ def cmd_main(args):
         if os.getuid() != 0:  # cmd_alias will create a config file. if it is launched as root, shit happens.
             args = cmd_alias(args)
 
-    if args[0] == "help":
+    if args[0] in ["help", "--help", "-h"]:
         cmd_help(args)
     if args[0] == "install":
         cmd_install()
